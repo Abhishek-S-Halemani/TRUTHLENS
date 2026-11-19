@@ -510,13 +510,12 @@ function getTeieFallbackResult(_reqBody: any) {
   });
 }
 
-async function startServer() {
-  const app = express();
-  app.use(express.json({ limit: '50mb' }));
+const app = express();
+app.use(express.json({ limit: '50mb' }));
 
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ ok: true, service: 'TruthLens Forensics API' });
-  });
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ ok: true, service: 'TruthLens Forensics API' });
+});
 
   // ---------------------------------------------------------------------------
   // 1. AUDIO FORENSICS (AASIST / RawNet2 / Wav2Vec2 / ECAPA-TDNN Calibration)
@@ -1660,22 +1659,6 @@ Return JSON with:
     }
   });
 
-  // Vite dev middleware vs static production dist
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
   // Pre-warm singleton AI client at startup so first request avoids cold initialization
   if (process.env.GEMINI_API_KEY) {
     try {
@@ -1685,12 +1668,28 @@ Return JSON with:
     }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`TruthLens Forensic Server running on http://0.0.0.0:${PORT}`);
-  });
-}
+  if (process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1') {
+    import('vite').then(async ({ createServer: createViteServer }) => {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`TruthLens Forensic Server running on http://0.0.0.0:${PORT}`);
+      });
+    });
+  } else {
+    const distPath = path.resolve(__dirname, 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
 
-startServer().catch((err) => {
-  console.error('Failed to start TruthLens server:', err);
-  process.exit(1);
-});
+    if (process.env.VERCEL !== '1') {
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`TruthLens Forensic Server running on http://0.0.0.0:${PORT}`);
+      });
+    }
+  }
+export default app;
